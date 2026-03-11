@@ -1,3 +1,6 @@
 <Solution>
   <Project Path="App.API/App.API.csproj" />
+  <Project Path="docker-compose.dcproj">
+    <Build />
+  </Project>
 </Solution>

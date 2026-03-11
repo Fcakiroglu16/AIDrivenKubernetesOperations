@@ -1,0 +1,6 @@
+services:
+  app.api:
+    image: app-api:latest
+    build:
+      context: .
+      dockerfile: App.API/Dockerfile
