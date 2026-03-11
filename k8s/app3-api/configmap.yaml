@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app3-api-config
+  namespace: app3-system
+  labels:
+    app.kubernetes.io/name: app3-api
+    app.kubernetes.io/component: config
+data:
+  ASPNETCORE_ENVIRONMENT: "Production"
+  # Must match the EXPOSE port in Dockerfile
+  ASPNETCORE_URLS: "http://+:8080"
+  Logging__LogLevel__Default: "Information"
+  Logging__LogLevel__Microsoft__AspNetCore: "Warning"
+  AllowedHosts: "*"
