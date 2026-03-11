@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "name": "argocd-app-deployer",
+  "owner": "jeremylongshore",
+  "repo": "claude-code-plugins-plus-skills",
+  "path": "planned-skills/generated/02-devops-advanced/argocd-app-deployer",
+  "branch": "main",
+  "sha": "7abe6a39f2997dde34ccb6700846752893ace369",
+  "source": "manual"
+}
