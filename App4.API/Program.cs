@@ -1,8 +1,11 @@
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+builder.Services.AddHealthChecks();
 
 var app = builder.Build();
 
@@ -11,6 +14,11 @@ if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
+
+// Liveness probe: process is alive — no checks executed
+app.MapHealthChecks("/healthz/live", new HealthCheckOptions { Predicate = _ => false });
+// Readiness probe: runs checks tagged "ready"
+app.MapHealthChecks("/healthz/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
 
 var summaries = new[]
 {
