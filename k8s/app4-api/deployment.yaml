@@ -42,7 +42,7 @@ spec:
         - name: app4-api
           # Built locally via: docker build -t app4-api:latest -f App4.API/Dockerfile .
           image: app4-api:latest
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 8080
