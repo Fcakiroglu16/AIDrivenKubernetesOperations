@@ -42,16 +42,17 @@ Before generating any file:
 
 ## Step 2 — Folder Structure
 
-Create the following layout under `k8s/`:
+Create the following layout under `k8s/api/`:
 
 ```
 k8s/
-├── namespace.yaml
-├── configmap.yaml
-├── secret.yaml
-├── deployment.yaml
-├── service.yaml
-└── hpa.yaml
+└── api/
+    ├── namespace.yaml
+    ├── configmap.yaml
+    ├── secret.yaml
+    ├── deployment.yaml
+    ├── service.yaml
+    └── hpa.yaml
 ```
 
 Use a single `namespace.yaml` for namespace declaration. All other resources must
@@ -61,7 +62,7 @@ include `namespace: app-system` in their `metadata`.
 
 ## Step 3 — Namespace
 
-File: `k8s/namespace.yaml`
+File: `k8s/api/namespace.yaml`
 
 ```yaml
 apiVersion: v1
@@ -76,7 +77,7 @@ metadata:
 
 ## Step 4 — ConfigMap
 
-File: `k8s/configmap.yaml`
+File: `k8s/api/configmap.yaml`
 
 Rules:
 
@@ -108,7 +109,7 @@ data:
 
 ## Step 5 — Secret
 
-File: `k8s/secret.yaml`
+File: `k8s/api/secret.yaml`
 
 Rules:
 
@@ -145,7 +146,7 @@ Only add keys that were actually found in the project. Do not invent secrets.
 
 ## Step 6 — Deployment
 
-File: `k8s/deployment.yaml`
+File: `k8s/api/deployment.yaml`
 
 Best-practice checklist (apply every rule):
 
@@ -274,7 +275,7 @@ spec:
 
 ## Step 7 — Service
 
-File: `k8s/service.yaml`
+File: `k8s/api/service.yaml`
 
 Rules:
 
@@ -307,7 +308,7 @@ spec:
 
 ## Step 8 — HorizontalPodAutoscaler
 
-File: `k8s/hpa.yaml`
+File: `k8s/api/hpa.yaml`
 
 Rules:
 
@@ -401,7 +402,7 @@ framework for .NET 8+ — no extra NuGet package is required.
 
 After creating all files:
 
-1. Run `kubectl apply --dry-run=client -f k8s/` (if `kubectl` is available in the
+1. Run `kubectl apply --dry-run=client -f k8s/api/` (if `kubectl` is available in the
    terminal) to validate the YAML syntax.
 2. Report any errors and fix them automatically.
 3. Print a summary table listing each file created and its purpose.
@@ -433,4 +434,4 @@ If `kubectl` is not available, skip the dry-run and tell the user.
   5. `service.yaml`
   6. `hpa.yaml`
 
-  Or use: `kubectl apply -f k8s/` (Kubernetes applies Namespace before other types).
+  Or use: `kubectl apply -f k8s/api/` (Kubernetes applies Namespace before other types).
