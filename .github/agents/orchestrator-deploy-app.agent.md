@@ -1,10 +1,10 @@
 ---
 description: >
-  End-to-end deployment orchestrator. When the user says "deploy X project",
-  runs the full pipeline in order:
-    1. kubernetes-resource-generator  — create k8s/api/ manifests
-    2. docker compose build           — build Docker images
-    3. argocd-app-deployer            — register ArgoCD AppProject + Application and sync
+  [ORCHESTRATOR] End-to-end deployment orchestrator. When the user says "deploy X
+  project", runs the full pipeline in order:
+    1. subagent-k8s-generator    — create k8s/api/ manifests
+    2. docker compose build      — build Docker images
+    3. subagent-argocd-deployer  — register ArgoCD AppProject + Application and sync
 tools:
   - file_search
   - read_file
@@ -35,13 +35,13 @@ before asking the user how to proceed.
 ## Pipeline Overview
 
 ```
-Phase 1 ─── Generate Kubernetes Manifests   (k8s/api/)
+Phase 1 ─── subagent-k8s-generator     (k8s/api/ manifests)
     │
     ▼
-Phase 2 ─── Build Docker Images             (docker compose build)
+Phase 2 ─── docker compose build        (Docker images)
     │
     ▼
-Phase 3 ─── Register & Sync ArgoCD          (AppProject + Application)
+Phase 3 ─── subagent-argocd-deployer    (ArgoCD AppProject + Application)
 ```
 
 ---
@@ -52,7 +52,7 @@ Phase 3 ─── Register & Sync ArgoCD          (AppProject + Application)
 > Use `list_dir` on `k8s/api/` to check. If every file is present, report
 > "Phase 1 skipped — manifests already exist" and move to Phase 2.
 
-Perform the following steps exactly as the **kubernetes-resource-generator** agent
+Perform the following steps exactly as the **subagent-k8s-generator** sub-agent
 instructs. Do not abbreviate.
 
 ### 1.1 — Read project files

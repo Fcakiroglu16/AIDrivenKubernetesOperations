@@ -1,8 +1,8 @@
 ---
 description: >
-  Builds Docker images via docker compose build, then creates an ArgoCD AppProject
-  and Application for this repository. Requires Kubernetes manifests under k8s/ to
-  already exist. Dependency: run kubernetes-resource-generator agent first.
+  [SUB-AGENT] Builds Docker images via docker compose build, then creates an ArgoCD
+  AppProject and Application for this repository. Requires Kubernetes manifests under
+  k8s/ to already exist. Dependency: run subagent-k8s-generator agent first.
 tools:
   - file_search
   - read_file
@@ -27,7 +27,7 @@ that continuously deploys the Kubernetes manifests in `k8s/api/` from this Git r
 
 > **Prerequisite**: All files under `k8s/api/` must already exist.
 > If any of the required manifests are missing, stop and instruct the user to run the
-> **kubernetes-resource-generator** agent first.
+> **subagent-k8s-generator** sub-agent first.
 
 ---
 
@@ -70,7 +70,7 @@ Use `list_dir` on `k8s/api/`. Confirm that **all six** files are present:
 | `hpa.yaml` | Horizontal Pod Autoscaler |
 
 If any file is missing, **stop** and tell the user which files are absent and that the
-`kubernetes-resource-generator` agent must be run first. Do **not** proceed.
+`subagent-k8s-generator` sub-agent must be run first. Do **not** proceed.
 
 ---
 
@@ -239,7 +239,7 @@ Provide a short operational summary that includes:
 | Situation | Action |
 |---|---|
 | `docker compose build` fails | Display full error, stop — do not proceed until images build successfully |
-| `k8s/api/` files are missing | Stop, list missing files, ask user to run `kubernetes-resource-generator` |
+| `k8s/api/` files are missing | Stop, list missing files, ask user to run `subagent-k8s-generator` |
 | Git remote not reachable | Ask user to provide repo URL manually |
 | ArgoCD MCP tool returns error | Display the raw error, suggest checking ArgoCD server connectivity |
 | Application already exists | Confirm with user before updating |

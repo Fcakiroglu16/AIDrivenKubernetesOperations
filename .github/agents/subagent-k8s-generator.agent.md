@@ -1,8 +1,8 @@
 ---
 description: >
-  Generates production-ready Kubernetes manifests (Namespace, Deployment, Service,
-  ConfigMap, Secret, HPA) for ASP.NET Core projects following best practices.
-  Places all files under the k8s/ directory with a clear folder structure.
+  [SUB-AGENT] Generates production-ready Kubernetes manifests (Namespace, Deployment,
+  Service, ConfigMap, Secret, HPA) for ASP.NET Core projects following best practices.
+  Places all files under the k8s/api/ directory.
 tools:
   - file_search
   - read_file
