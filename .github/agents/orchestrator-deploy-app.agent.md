@@ -6,6 +6,7 @@ description: >
     1. subagent-k8s-generator           — create k8s manifests (YAML only, no apply)
     2. docker compose build             — build Docker images
     3. subagent-argocd-deployer         — register ArgoCD AppProject + Application and sync
+    4. k8s-log-analyzer                 — inspect pod logs, report errors, propose fixes
 tools:
   - file_search
   - read_file
@@ -20,6 +21,11 @@ tools:
   - mcp_argocd-mcp-st_get_application
   - mcp_argocd-mcp-st_sync_application
   - mcp_argocd-mcp-st_update_application
+  - mcp_kubernetes_ping
+  - mcp_kubernetes_kubectl_context
+  - mcp_kubernetes_kubectl_get
+  - mcp_kubernetes_kubectl_logs
+  - mcp_kubernetes_kubectl_describe
 skills:
   - ../.agents/skills/kubernetes/SKILL.md
   - ../.agents/skills/argocd-app-deployer/SKILL.md
@@ -47,6 +53,9 @@ Phase 2 ─── docker compose build           (Docker images)
     │
     ▼
 Phase 3 ─── subagent-argocd-deployer       (ArgoCD AppProject + Application + sync)
+    │
+    ▼
+Phase 4 ─── k8s-log-analyzer               (inspect pod logs, report errors, propose fixes)
 ```
 
 ---
@@ -285,6 +294,38 @@ Use `mcp_argocd-mcp-st_get_application` and show:
 
 ---
 
+## Phase 4 — Log Analysis & Error Detection
+
+> **This phase runs automatically after Phase 3 completes.**
+> Use Kubernetes MCP tools directly in this phase — delegate to `k8s-log-analyzer` if available.
+
+### 4.1 — Wait for pods to start
+
+After ArgoCD sync, wait up to 60 seconds for pods to enter `Running` state.
+Use `mcp_kubernetes_kubectl_get` with `resourceType: pods` and `namespace: app-system`
+to poll status. Check every 10 seconds (max 6 attempts).
+
+If pods are still `Pending` or `CrashLoopBackOff` after 60 s, proceed immediately to
+log fetch — do not wait further.
+
+### 4.2 — Fetch & analyze logs
+
+For every pod in `app-system`:
+
+1. Fetch logs via `mcp_kubernetes_kubectl_logs`.
+2. If `restartCount > 0`, fetch previous logs too.
+3. Describe the pod via `mcp_kubernetes_kubectl_describe` to collect Events.
+4. Scan for error patterns: `error`, `exception`, `fatal`, `panic`, `timeout`,
+   `CrashLoopBackOff`, `OOMKilled`, `connection refused`, `unauthorized`.
+
+### 4.3 — Report results
+
+- If errors are found: print a structured report for each error with root cause analysis
+  and proposed fix (following the `k8s-log-analyzer` format).
+- If no errors: print `✅ Tüm podlar sağlıklı — log analizinde hata tespit edilmedi.`
+
+---
+
 ## Final Summary
 
 After all phases complete, report:
@@ -295,6 +336,7 @@ After all phases complete, report:
 | Phase 1 — K8s Manifests | ✅ / ⚠️ skipped / ❌ failed | |
 | Phase 2 — Docker Build | ✅ / ❌ failed | Images built |
 | Phase 3 — ArgoCD | ✅ / ❌ failed | App name, sync status |
+| Phase 4 — Log Analysis | ✅ healthy / ⚠️ warnings / 🔴 errors | Error count |
 
 **Next recommended steps:**
 - Replace placeholder Secrets in `k8s/api/secret.yaml` with a proper secrets manager
@@ -316,3 +358,5 @@ After all phases complete, report:
 | ArgoCD MCP returns error in Phase 3 | Show raw error, suggest checking ArgoCD server |
 | Application already exists | Ask user before updating |
 | `kubectl` unavailable | Skip dry-run (Phase 1) and AppProject apply (Phase 3), note in summary |
+| Pods still Pending after 60 s in Phase 4 | Fetch logs anyway, describe pod events, report cause |
+| Kubernetes MCP unavailable in Phase 4 | Note in summary — do not abort the whole pipeline |
