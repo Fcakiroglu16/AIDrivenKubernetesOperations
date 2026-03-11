@@ -12,7 +12,6 @@ tools:
   - run_in_terminal
   - grep_search
 ---
-
 # Kubernetes Resource Generator — Agent Instructions
 
 You are an expert Kubernetes and ASP.NET Core engineer. Your goal is to generate
@@ -78,6 +77,7 @@ metadata:
 File: `k8s/configmap.yaml`
 
 Rules:
+
 - Add every **non-sensitive** key from `appsettings.json` as a flat key under `data`.
 - Use `__` (double underscore) as the hierarchy separator for nested JSON keys
   (e.g., `Logging__LogLevel__Default`). ASP.NET Core reads these automatically.
@@ -109,6 +109,7 @@ data:
 File: `k8s/secret.yaml`
 
 Rules:
+
 - Use `type: Opaque`.
 - Every value **must** be base64-encoded. Use placeholder values and add a comment
   instructing the operator to replace them before deploying.
@@ -146,21 +147,22 @@ File: `k8s/deployment.yaml`
 
 Best-practice checklist (apply every rule):
 
-| Rule | Detail |
-|---|---|
-| `replicas` | Start with `2` for HA |
-| `image` | Use `app-api:latest` as placeholder; add comment to replace with real registry path |
-| `imagePullPolicy` | `IfNotPresent` for local, `Always` for production — use `Always` |
-| `resources.requests` | `cpu: "100m"`, `memory: "128Mi"` |
-| `resources.limits` | `cpu: "500m"`, `memory: "256Mi"` |
-| `readinessProbe` | HTTP GET `/healthz/ready` on port 8080, `initialDelaySeconds: 10`, `periodSeconds: 5` — runs checks tagged `ready` |
-| `livenessProbe` | HTTP GET `/healthz/live` on port 8080, `initialDelaySeconds: 30`, `periodSeconds: 15` — no checks, just confirms process is alive |
-| `envFrom` | Reference both `configMapRef: app-api-config` and `secretRef: app-api-secret` |
-| `securityContext` (pod) | `runAsNonRoot: true`, `seccompProfile: RuntimeDefault` |
-| `securityContext` (container) | `allowPrivilegeEscalation: false`, `readOnlyRootFilesystem: true`, `capabilities.drop: ["ALL"]` |
-| `topologySpreadConstraints` | Spread pods across nodes with `maxSkew: 1` |
-| `terminationGracePeriodSeconds` | `60` to allow in-flight requests to finish |
-| Labels | Use `app.kubernetes.io/name`, `app.kubernetes.io/version`, `app.kubernetes.io/component` |
+
+| Rule                            | Detail                                                                                                                            |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `replicas`                      | Start with`2` for HA                                                                                                              |
+| `image`                         | Use`app-api:latest` as placeholder; add comment to replace with real registry path                                                |
+| `imagePullPolicy`               | `IfNotPresent` for local, `Always` for production — use `Always`                                                                 |
+| `resources.requests`            | `cpu: "100m"`, `memory: "128Mi"`                                                                                                  |
+| `resources.limits`              | `cpu: "500m"`, `memory: "256Mi"`                                                                                                  |
+| `readinessProbe`                | HTTP GET`/healthz/ready` on port 8080, `initialDelaySeconds: 10`, `periodSeconds: 5` — runs checks tagged `ready`                |
+| `livenessProbe`                 | HTTP GET`/healthz/live` on port 8080, `initialDelaySeconds: 30`, `periodSeconds: 15` — no checks, just confirms process is alive |
+| `envFrom`                       | Reference both`configMapRef: app-api-config` and `secretRef: app-api-secret`                                                      |
+| `securityContext` (pod)         | `runAsNonRoot: true`, `seccompProfile: RuntimeDefault`                                                                            |
+| `securityContext` (container)   | `allowPrivilegeEscalation: false`, `readOnlyRootFilesystem: true`, `capabilities.drop: ["ALL"]`                                   |
+| `topologySpreadConstraints`     | Spread pods across nodes with`maxSkew: 1`                                                                                         |
+| `terminationGracePeriodSeconds` | `60` to allow in-flight requests to finish                                                                                        |
+| Labels                          | Use`app.kubernetes.io/name`, `app.kubernetes.io/version`, `app.kubernetes.io/component`                                           |
 
 The container port **must** match the Dockerfile `EXPOSE` value (8080).
 
@@ -273,6 +275,7 @@ spec:
 File: `k8s/service.yaml`
 
 Rules:
+
 - Use `type: ClusterIP` by default (expose via Ingress, not LoadBalancer).
 - Map port `80` → `targetPort: http` (named port on Pod).
 - Add `sessionAffinity: None`.
@@ -305,6 +308,7 @@ spec:
 File: `k8s/hpa.yaml`
 
 Rules:
+
 - Target `Deployment/app-api`.
 - `minReplicas: 2`, `maxReplicas: 10`.
 - Scale on CPU at `70%` utilisation and memory at `80%` utilisation.
@@ -380,10 +384,11 @@ app.MapHealthChecks("/healthz/ready", new HealthCheckOptions
 
 **Why two endpoints?**
 
-| Probe | Path | Behaviour | Kubernetes action on failure |
-|---|---|---|---|
-| Liveness | `/healthz/live` | `Predicate = _ => false` → always 200 if process runs | Restart the container |
-| Readiness | `/healthz/ready` | Runs checks tagged `"ready"` | Remove pod from Service endpoints |
+
+| Probe     | Path             | Behaviour                                              | Kubernetes action on failure      |
+| --------- | ---------------- | ------------------------------------------------------ | --------------------------------- |
+| Liveness  | `/healthz/live`  | `Predicate = _ => false` → always 200 if process runs | Restart the container             |
+| Readiness | `/healthz/ready` | Runs checks tagged`"ready"`                            | Remove pod from Service endpoints |
 
 `Microsoft.AspNetCore.Diagnostics.HealthChecks` is part of the ASP.NET Core shared
 framework for .NET 8+ — no extra NuGet package is required.
@@ -418,6 +423,7 @@ If `kubectl` is not available, skip the dry-run and tell the user.
 - **Probes**: Both `readiness` and `liveness` probes are mandatory.
 - **YAML comments**: Add brief comments explaining non-obvious fields.
 - **Apply order**: Instruct the user to apply in this order:
+
   1. `namespace.yaml`
   2. `configmap.yaml`
   3. `secret.yaml`
