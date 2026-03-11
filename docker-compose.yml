@@ -32,3 +32,10 @@ services:
       context: .
       dockerfile: App5.API/Dockerfile
 
+
+  app6.api:
+    image: app6-api
+    build:
+      context: .
+      dockerfile: App6.API/Dockerfile
+
