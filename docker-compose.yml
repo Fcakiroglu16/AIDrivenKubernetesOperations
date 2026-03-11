@@ -11,3 +11,10 @@ services:
       context: .
       dockerfile: App2.API/Dockerfile
 
+
+  app3.api:
+    image: app3-api:latest
+    build:
+      context: .
+      dockerfile: App3.API/Dockerfile
+
