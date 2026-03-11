@@ -30,7 +30,6 @@ skills:
   - ../.agents/skills/kubernetes/SKILL.md
   - ../.agents/skills/argocd-app-deployer/SKILL.md
 ---
-
 # Deploy App — End-to-End Orchestrator
 
 You are a senior DevOps engineer orchestrating a complete GitOps deployment pipeline.
@@ -43,26 +42,59 @@ before asking the user how to proceed.
 ## Pipeline Overview
 
 ```
-Phase 0 ─── ArgoCD MCP connectivity check  (ABORT if unreachable)
+Phase 0.0 ── kubectl context → docker-desktop  (ABORT if not available — no other context allowed)
     │
     ▼
-Phase 1 ─── subagent-k8s-generator         (k8s manifests — YAML files only, no kubectl apply)
+Phase 0.1 ── ArgoCD MCP connectivity check     (ABORT if unreachable)
     │
     ▼
-Phase 2 ─── docker compose build           (Docker images)
+Phase 1 ──── subagent-k8s-generator            (k8s manifests — YAML files only, no kubectl apply)
     │
     ▼
-Phase 3 ─── subagent-argocd-deployer       (ArgoCD AppProject + Application + sync)
+Phase 1.4 ── health check endpoints            (add /healthz/live + /healthz/ready to app if missing)
     │
     ▼
-Phase 4 ─── k8s-log-analyzer               (inspect pod logs, report errors, propose fixes)
+Phase 2 ──── docker compose build              (Docker images)
+    │
+    ▼
+Phase 3 ──── subagent-argocd-deployer          (ArgoCD AppProject + Application + sync)
+    │
+    ▼
+Phase 4 ──── k8s-log-analyzer                  (inspect pod logs, report errors, propose fixes)
 ```
 
 ---
 
-## Phase 0 — ArgoCD MCP Connectivity Check
+## Phase 0 — Context & Connectivity Checks
 
-> **This phase runs FIRST, before any other work. If it fails, the pipeline stops immediately.**
+### 0.0 — Switch to Docker Desktop kubectl context
+
+> **This step runs before ALL others. Only the `docker-desktop` context is permitted.**
+> **No AKS, no remote cluster, no other context will be used.**
+
+Run:
+
+```bash
+kubectl config use-context docker-desktop
+kubectl config current-context
+```
+
+- **Success** (output is `docker-desktop`): Print `✅ kubectl context: docker-desktop` and proceed to Phase 0.1.
+- **Failure** (context not found or current context differs): Print the following and **STOP**:
+
+```
+❌ docker-desktop kubectl context bulunamadı.
+Deployment yalnızca Docker Desktop üzerinde çalışır.
+
+Çözüm:
+  - Docker Desktop'ın çalıştığından ve Kubernetes'in etkinleştirildiğinden emin olun.
+    Settings → Kubernetes → Enable Kubernetes ✓
+  - Ardından tekrar deneyin.
+```
+
+### 0.1 — ArgoCD MCP Connectivity Check
+
+> **If this step fails, the pipeline stops immediately.**
 
 Use `mcp_argocd-mcp-st_ping` to verify that the ArgoCD MCP server is reachable.
 
@@ -107,16 +139,18 @@ instructs. Do not abbreviate.
 
 Create all six files. Follow the exact templates from the kubernetes skill:
 
-| File | Kind |
-|---|---|
-| `k8s/api/namespace.yaml` | Namespace `app-system` |
-| `k8s/api/configmap.yaml` | ConfigMap `app-api-config` — non-sensitive keys only |
-| `k8s/api/secret.yaml` | Secret `app-api-secret` — base64 placeholders, warning comment |
-| `k8s/api/deployment.yaml` | Deployment — 2 replicas, health probes, security context |
-| `k8s/api/service.yaml` | Service — ClusterIP, port 80 → 8080 |
-| `k8s/api/hpa.yaml` | HPA — min 2, max 10, CPU 70%, Memory 80% |
+
+| File                      | Kind                                                           |
+| ------------------------- | -------------------------------------------------------------- |
+| `k8s/api/namespace.yaml`  | Namespace`app-system`                                          |
+| `k8s/api/configmap.yaml`  | ConfigMap`app-api-config` — non-sensitive keys only           |
+| `k8s/api/secret.yaml`     | Secret`app-api-secret` — base64 placeholders, warning comment |
+| `k8s/api/deployment.yaml` | Deployment — 2 replicas, health probes, security context      |
+| `k8s/api/service.yaml`    | Service — ClusterIP, port 80 → 8080                          |
+| `k8s/api/hpa.yaml`        | HPA — min 2, max 10, CPU 70%, Memory 80%                      |
 
 Rules:
+
 - All resources: `namespace: app-system`.
 - Deployment image: `app-api:latest` (must match the service name in `docker-compose.yml`).
 - `imagePullPolicy: Always`.
@@ -136,20 +170,59 @@ kubectl apply --dry-run=client -f k8s/api/
 If `kubectl` is unavailable, skip this step and note it in the summary.
 If dry-run fails, fix the YAML errors before proceeding to Phase 2.
 
-### 1.4 — Check health endpoints in Program.cs
+### 1.4 — Add health check endpoints to the target project
 
-If `/healthz/live` and `/healthz/ready` are missing from `App.API/Program.cs`, add them:
+> This step targets the **project folder being deployed** (e.g., `App3.API/` when deploying `app3`).
+> The Kubernetes deployment manifests use `/healthz/live` and `/healthz/ready` probes — the app must expose them.
 
-```csharp
-builder.Services.AddHealthChecks();
+**For the project being deployed, do ALL of the following:**
 
-// after app = builder.Build():
-app.MapHealthChecks("/healthz/live", new HealthCheckOptions { Predicate = _ => false });
-app.MapHealthChecks("/healthz/ready", new HealthCheckOptions
-{
-    Predicate = check => check.Tags.Contains("ready")
-});
-```
+1. Read `{ProjectFolder}/Program.cs`.
+2. Check for ALL four of the following:
+
+   - `using Microsoft.AspNetCore.Diagnostics.HealthChecks;`
+   - `builder.Services.AddHealthChecks()`
+   - `app.MapHealthChecks("/healthz/live", ...)`
+   - `app.MapHealthChecks("/healthz/ready", ...)`
+3. If **any** are missing, apply the following edits to `{ProjectFolder}/Program.cs`:
+
+   **a)** At the very top of the file, add the `using` (if not present):
+
+   ```csharp
+   using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+   ```
+
+   **b)** Before `builder.Build()`, add the service registration (if not present):
+
+   ```csharp
+   builder.Services.AddHealthChecks();
+   ```
+
+   **c)** After `var app = builder.Build();`, add both endpoint mappings (if not present):
+
+   ```csharp
+   // Liveness probe: process is alive — no checks executed
+   app.MapHealthChecks("/healthz/live", new HealthCheckOptions
+   {
+       Predicate = _ => false
+   });
+
+   // Readiness probe: runs checks tagged "ready"
+   app.MapHealthChecks("/healthz/ready", new HealthCheckOptions
+   {
+       Predicate = check => check.Tags.Contains("ready")
+   });
+   ```
+4. After editing, verify the project compiles:
+
+   ```bash
+   dotnet build {ProjectFolder}/{ProjectName}.csproj
+   ```
+
+   If the build fails, fix the error before proceeding to Phase 2.
+
+> **Note**: `Microsoft.AspNetCore.Diagnostics.HealthChecks` is part of the `Microsoft.AspNetCore.App`
+> shared framework — **no additional NuGet package is needed**.
 
 ---
 
@@ -243,6 +316,7 @@ kubectl apply -f k8s/argocd/appproject.yaml
 ### 3.3 — Check for existing Application
 
 Use `mcp_argocd-mcp-st_list_applications`. If `app-api` already exists:
+
 - Show current health + sync status.
 - Ask the user: **update** or **skip**?
 
@@ -250,27 +324,29 @@ Use `mcp_argocd-mcp-st_list_applications`. If `app-api` already exists:
 
 Use `mcp_argocd-mcp-st_create_application`:
 
-| Field | Value |
-|---|---|
-| `metadata.name` | `app-api` |
-| `metadata.namespace` | `argocd` |
-| `spec.project` | `app-api-project` |
-| `spec.source.repoURL` | Git repo HTTPS URL |
-| `spec.source.path` | `k8s/api` |
-| `spec.source.targetRevision` | Current branch (e.g. `main`) |
-| `spec.destination.server` | `https://kubernetes.default.svc` |
-| `spec.destination.namespace` | `app-system` |
-| `spec.syncPolicy.syncOptions` | `["CreateNamespace=true", "ServerSideApply=true"]` |
-| `spec.syncPolicy.automated.prune` | `true` |
-| `spec.syncPolicy.automated.selfHeal` | `true` |
-| `spec.syncPolicy.retry.limit` | `5` |
-| `spec.syncPolicy.retry.backoff.duration` | `"5s"` |
-| `spec.syncPolicy.retry.backoff.maxDuration` | `"3m"` |
-| `spec.syncPolicy.retry.backoff.factor` | `2` |
+
+| Field                                       | Value                                              |
+| ------------------------------------------- | -------------------------------------------------- |
+| `metadata.name`                             | `app-api`                                          |
+| `metadata.namespace`                        | `argocd`                                           |
+| `spec.project`                              | `app-api-project`                                  |
+| `spec.source.repoURL`                       | Git repo HTTPS URL                                 |
+| `spec.source.path`                          | `k8s/api`                                          |
+| `spec.source.targetRevision`                | Current branch (e.g.`main`)                        |
+| `spec.destination.server`                   | `https://kubernetes.default.svc`                   |
+| `spec.destination.namespace`                | `app-system`                                       |
+| `spec.syncPolicy.syncOptions`               | `["CreateNamespace=true", "ServerSideApply=true"]` |
+| `spec.syncPolicy.automated.prune`           | `true`                                             |
+| `spec.syncPolicy.automated.selfHeal`        | `true`                                             |
+| `spec.syncPolicy.retry.limit`               | `5`                                                |
+| `spec.syncPolicy.retry.backoff.duration`    | `"5s"`                                             |
+| `spec.syncPolicy.retry.backoff.maxDuration` | `"3m"`                                             |
+| `spec.syncPolicy.retry.backoff.factor`      | `2`                                                |
 
 ### 3.5 — Trigger initial sync
 
 Use `mcp_argocd-mcp-st_sync_application`:
+
 - `applicationName`: `app-api`
 - `applicationNamespace`: `argocd`
 - `prune`: `true`
@@ -281,16 +357,17 @@ Trigger once — do not poll.
 
 Use `mcp_argocd-mcp-st_get_application` and show:
 
-| Field | Value |
-|---|---|
-| Name | |
-| Project | |
-| Repo URL | |
-| Path | |
-| Target Revision | |
-| Health Status | |
-| Sync Status | |
-| Last Sync | |
+
+| Field           | Value |
+| --------------- | ----- |
+| Name            |       |
+| Project         |       |
+| Repo URL        |       |
+| Path            |       |
+| Target Revision |       |
+| Health Status   |       |
+| Sync Status     |       |
+| Last Sync       |       |
 
 ---
 
@@ -330,15 +407,18 @@ For every pod in `app-system`:
 
 After all phases complete, report:
 
-| Phase | Status | Notes |
-|---|---|---|
-| Phase 0 — ArgoCD MCP Check | ✅ reachable / ❌ aborted | |
-| Phase 1 — K8s Manifests | ✅ / ⚠️ skipped / ❌ failed | |
-| Phase 2 — Docker Build | ✅ / ❌ failed | Images built |
-| Phase 3 — ArgoCD | ✅ / ❌ failed | App name, sync status |
-| Phase 4 — Log Analysis | ✅ healthy / ⚠️ warnings / 🔴 errors | Error count |
+
+| Phase                               | Status                                 | Notes                 |
+| ----------------------------------- | -------------------------------------- | --------------------- |
+| Phase 0.0 — Docker Desktop Context | ✅ switched / ❌ aborted               |                       |
+| Phase 0.1 — ArgoCD MCP Check       | ✅ reachable / ❌ aborted              |                       |
+| Phase 1 — K8s Manifests            | ✅ / ⚠️ skipped / ❌ failed          |                       |
+| Phase 2 — Docker Build             | ✅ / ❌ failed                         | Images built          |
+| Phase 3 — ArgoCD                   | ✅ / ❌ failed                         | App name, sync status |
+| Phase 4 — Log Analysis             | ✅ healthy / ⚠️ warnings / 🔴 errors | Error count           |
 
 **Next recommended steps:**
+
 - Replace placeholder Secrets in `k8s/api/secret.yaml` with a proper secrets manager
   (Sealed Secrets or External Secrets Operator).
 - Add an `Ingress` or `Gateway` resource for external access.
@@ -348,15 +428,17 @@ After all phases complete, report:
 
 ## Error Policy
 
-| Situation | Action |
-|---|---|
-| ArgoCD MCP unreachable | **ABORT immediately** at Phase 0 — do not proceed |
-| `k8s/api/` files missing & creation fails | Stop at Phase 1, report missing files |
-| `kubectl apply` attempted in Phase 1 | **FORBIDDEN** — only dry-run is allowed in Phase 1 |
-| `docker compose build` fails | Stop at Phase 2, show full error |
-| Image name mismatch between compose and deployment.yaml | Fix deployment.yaml, then rebuild |
-| ArgoCD MCP returns error in Phase 3 | Show raw error, suggest checking ArgoCD server |
-| Application already exists | Ask user before updating |
-| `kubectl` unavailable | Skip dry-run (Phase 1) and AppProject apply (Phase 3), note in summary |
-| Pods still Pending after 60 s in Phase 4 | Fetch logs anyway, describe pod events, report cause |
-| Kubernetes MCP unavailable in Phase 4 | Note in summary — do not abort the whole pipeline |
+
+| Situation                                               | Action                                                                 |
+| ------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `docker-desktop` context not found or not active        | **ABORT immediately** at Phase 0.0 — do not proceed                   |
+| ArgoCD MCP unreachable                                  | **ABORT immediately** at Phase 0.1 — do not proceed                   |
+| `k8s/api/` files missing & creation fails               | Stop at Phase 1, report missing files                                  |
+| `kubectl apply` attempted in Phase 1                    | **FORBIDDEN** — only dry-run is allowed in Phase 1                    |
+| `docker compose build` fails                            | Stop at Phase 2, show full error                                       |
+| Image name mismatch between compose and deployment.yaml | Fix deployment.yaml, then rebuild                                      |
+| ArgoCD MCP returns error in Phase 3                     | Show raw error, suggest checking ArgoCD server                         |
+| Application already exists                              | Ask user before updating                                               |
+| `kubectl` unavailable                                   | Skip dry-run (Phase 1) and AppProject apply (Phase 3), note in summary |
+| Pods still Pending after 60 s in Phase 4                | Fetch logs anyway, describe pod events, report cause                   |
+| Kubernetes MCP unavailable in Phase 4                   | Note in summary — do not abort the whole pipeline                     |
