@@ -4,6 +4,7 @@
   <Project Path="App3.API/App3.API.csproj" Id="e5533266-a744-4c4e-a094-dcc73a8f3ea0" />
   <Project Path="App4.API/App4.API.csproj" Id="117395f3-b140-4896-9dca-b2948510211b" />
   <Project Path="App5.API/App5.API.csproj" Id="b7a0e349-070e-458c-af13-e290c299bb76" />
+  <Project Path="App6.API/App6.API.csproj" Id="251afc51-e452-4fa9-9087-f85e7c2468be" />
   <Project Path="docker-compose.dcproj">
     <Build />
   </Project>
