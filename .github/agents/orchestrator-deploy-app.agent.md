@@ -2,9 +2,10 @@
 description: >
   [ORCHESTRATOR] End-to-end deployment orchestrator. When the user says "deploy X
   project", runs the full pipeline in order:
-    1. subagent-k8s-generator    — create k8s/api/ manifests
-    2. docker compose build      — build Docker images
-    3. subagent-argocd-deployer  — register ArgoCD AppProject + Application and sync
+    0. ArgoCD MCP connectivity check    — abort if unreachable
+    1. subagent-k8s-generator           — create k8s manifests (YAML only, no apply)
+    2. docker compose build             — build Docker images
+    3. subagent-argocd-deployer         — register ArgoCD AppProject + Application and sync
 tools:
   - file_search
   - read_file
@@ -13,6 +14,7 @@ tools:
   - grep_search
   - create_file
   - replace_string_in_file
+  - mcp_argocd-mcp-st_ping
   - mcp_argocd-mcp-st_list_applications
   - mcp_argocd-mcp-st_create_application
   - mcp_argocd-mcp-st_get_application
@@ -35,13 +37,39 @@ before asking the user how to proceed.
 ## Pipeline Overview
 
 ```
-Phase 1 ─── subagent-k8s-generator     (k8s/api/ manifests)
+Phase 0 ─── ArgoCD MCP connectivity check  (ABORT if unreachable)
     │
     ▼
-Phase 2 ─── docker compose build        (Docker images)
+Phase 1 ─── subagent-k8s-generator         (k8s manifests — YAML files only, no kubectl apply)
     │
     ▼
-Phase 3 ─── subagent-argocd-deployer    (ArgoCD AppProject + Application)
+Phase 2 ─── docker compose build           (Docker images)
+    │
+    ▼
+Phase 3 ─── subagent-argocd-deployer       (ArgoCD AppProject + Application + sync)
+```
+
+---
+
+## Phase 0 — ArgoCD MCP Connectivity Check
+
+> **This phase runs FIRST, before any other work. If it fails, the pipeline stops immediately.**
+
+Use `mcp_argocd-mcp-st_ping` to verify that the ArgoCD MCP server is reachable.
+
+- **Success** (tool returns a healthy response): Print `✅ ArgoCD MCP reachable — proceeding with deployment.` and move to Phase 1.
+- **Failure** (tool returns an error or is unavailable): Print the following message and **STOP**. Do not proceed to any further phase.
+
+```
+❌ ArgoCD MCP bağlantısı kurulamadı.
+Deployment süreci durduruldu.
+
+Olası nedenler:
+  - ArgoCD MCP sunucusu çalışmıyor
+  - MCP server konfigürasyonu eksik veya yanlış
+  - Ağ/firewall engeli
+
+Lütfen ArgoCD MCP sunucusunu kontrol edip tekrar deneyin.
 ```
 
 ---
@@ -51,6 +79,9 @@ Phase 3 ─── subagent-argocd-deployer    (ArgoCD AppProject + Application)
 > **Skip this phase if all six files already exist under `k8s/api/`.**
 > Use `list_dir` on `k8s/api/` to check. If every file is present, report
 > "Phase 1 skipped — manifests already exist" and move to Phase 2.
+
+> **IMPORTANT**: This phase only **creates YAML files**. Do NOT run `kubectl apply`.
+> The actual apply to the cluster is handled by ArgoCD in Phase 3.
 
 Perform the following steps exactly as the **subagent-k8s-generator** sub-agent
 instructs. Do not abbreviate.
@@ -85,13 +116,16 @@ Rules:
 - Mount `emptyDir` at `/tmp`.
 - Both liveness (`/healthz/live`) and readiness (`/healthz/ready`) probes required.
 
-### 1.3 — Validate (dry-run)
+### 1.3 — Validate (dry-run only)
+
+Run a client-side dry-run to validate YAML syntax. This does **not** apply anything to the cluster:
 
 ```bash
 kubectl apply --dry-run=client -f k8s/api/
 ```
 
 If `kubectl` is unavailable, skip this step and note it in the summary.
+If dry-run fails, fix the YAML errors before proceeding to Phase 2.
 
 ### 1.4 — Check health endpoints in Program.cs
 
@@ -136,6 +170,9 @@ docker compose build
 ---
 
 ## Phase 3 — Register & Sync ArgoCD
+
+> The **subagent-argocd-deployer** handles this phase.
+> Docker images are already built in Phase 2 — the ArgoCD agent does NOT build images.
 
 ### 3.1 — Gather Git context
 
@@ -250,10 +287,11 @@ Use `mcp_argocd-mcp-st_get_application` and show:
 
 ## Final Summary
 
-After all three phases complete, report:
+After all phases complete, report:
 
 | Phase | Status | Notes |
 |---|---|---|
+| Phase 0 — ArgoCD MCP Check | ✅ reachable / ❌ aborted | |
 | Phase 1 — K8s Manifests | ✅ / ⚠️ skipped / ❌ failed | |
 | Phase 2 — Docker Build | ✅ / ❌ failed | Images built |
 | Phase 3 — ArgoCD | ✅ / ❌ failed | App name, sync status |
@@ -270,9 +308,11 @@ After all three phases complete, report:
 
 | Situation | Action |
 |---|---|
+| ArgoCD MCP unreachable | **ABORT immediately** at Phase 0 — do not proceed |
 | `k8s/api/` files missing & creation fails | Stop at Phase 1, report missing files |
+| `kubectl apply` attempted in Phase 1 | **FORBIDDEN** — only dry-run is allowed in Phase 1 |
 | `docker compose build` fails | Stop at Phase 2, show full error |
 | Image name mismatch between compose and deployment.yaml | Fix deployment.yaml, then rebuild |
-| ArgoCD MCP returns error | Show raw error, suggest checking ArgoCD server |
+| ArgoCD MCP returns error in Phase 3 | Show raw error, suggest checking ArgoCD server |
 | Application already exists | Ask user before updating |
 | `kubectl` unavailable | Skip dry-run (Phase 1) and AppProject apply (Phase 3), note in summary |

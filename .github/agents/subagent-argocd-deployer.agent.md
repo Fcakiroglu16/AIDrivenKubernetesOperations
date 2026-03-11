@@ -1,14 +1,14 @@
 ---
 description: >
-  [SUB-AGENT] Builds Docker images via docker compose build, then creates an ArgoCD
-  AppProject and Application for this repository. Requires Kubernetes manifests under
-  k8s/ to already exist. Dependency: run subagent-k8s-generator agent first.
+  [SUB-AGENT] Creates an ArgoCD AppProject and Application for this repository and
+  triggers the initial sync. Requires Kubernetes manifests under k8s/ to already exist
+  AND Docker images to already be built. Dependencies: run subagent-k8s-generator first,
+  then docker compose build (handled by the orchestrator). This agent does NOT build images.
 tools:
   - file_search
   - read_file
   - create_file
   - list_dir
-  - run_in_terminal
   - grep_search
   - mcp_argocd-mcp-st_list_applications
   - mcp_argocd-mcp-st_create_application
@@ -25,38 +25,15 @@ You are an expert GitOps and ArgoCD engineer.
 Your goal is to create a production-ready **ArgoCD AppProject** and **ArgoCD Application**
 that continuously deploys the Kubernetes manifests in `k8s/api/` from this Git repository.
 
-> **Prerequisite**: All files under `k8s/api/` must already exist.
+> **Prerequisite**: All files under `k8s/api/` must already exist AND Docker images must
+> already be built by the orchestrator's Phase 2 (`docker compose build`).
+> This agent does **NOT** build Docker images — that is done by the orchestrator.
 > If any of the required manifests are missing, stop and instruct the user to run the
 > **subagent-k8s-generator** sub-agent first.
 
 ---
 
-## Step 1 — Build Docker Images with Docker Compose
-
-Before doing anything else, verify that `docker-compose.yml` exists in the workspace root.
-Read it to identify every service and its image name.
-
-Run the following command to build all images:
-
-```bash
-docker compose build
-```
-
-- If the build **succeeds**, show a brief summary of the built images (service name →
-  image tag) and proceed to Step 2.
-- If the build **fails**, display the full error output and **stop**. Do not proceed with
-  ArgoCD deployment until all images build successfully. Common causes:
-  - Dockerfile path is wrong → check `dockerfile:` field in `docker-compose.yml`.
-  - Missing SDK / base image → check the FROM layers in each Dockerfile.
-  - Build context issue → ensure all referenced source files exist.
-
-> The images produced here (e.g. `app-api:latest`, `app2-api:latest`) must match the
-> `image:` field in `k8s/api/deployment.yaml`. If there is a mismatch, update
-> `k8s/api/deployment.yaml` before continuing.
-
----
-
-## Step 2 — Verify Kubernetes Manifests
+## Step 1 — Verify Kubernetes Manifests
 
 Use `list_dir` on `k8s/api/`. Confirm that **all six** files are present:
 
@@ -74,7 +51,7 @@ If any file is missing, **stop** and tell the user which files are absent and th
 
 ---
 
-## Step 3 — Read Project Context
+## Step 2 — Read Project Context
 
 1. Run `git remote get-url origin` to determine the canonical Git repository URL.
    - If the URL is SSH (git@github.com:org/repo.git), convert it to HTTPS format:
@@ -85,7 +62,7 @@ If any file is missing, **stop** and tell the user which files are absent and th
 
 ---
 
-## Step 4 — Create ArgoCD AppProject Manifest
+## Step 3 — Create ArgoCD AppProject Manifest
 
 Create the file `k8s/argocd/appproject.yaml` with the following structure.
 Substitute `<REPO_URL>` and `<APP_NAMESPACE>` with the values discovered in Step 2.
@@ -151,7 +128,7 @@ to Step 5 (the Application can still be registered via the MCP tool).
 
 ---
 
-## Step 5 — Check for Existing ArgoCD Application
+## Step 4 — Check for Existing ArgoCD Application
 
 Before creating, use `mcp_argocd-mcp-st_list_applications` and search for the app name
 (e.g. `app-api`). If an application with the same name already exists:
@@ -161,7 +138,7 @@ Before creating, use `mcp_argocd-mcp-st_list_applications` and search for the ap
 
 ---
 
-## Step 6 — Create ArgoCD Application via MCP
+## Step 5 — Create ArgoCD Application via MCP
 
 Use `mcp_argocd-mcp-st_create_application` with the values collected in Step 3:
 
@@ -185,7 +162,7 @@ Use `mcp_argocd-mcp-st_create_application` with the values collected in Step 3:
 
 ---
 
-## Step 7 — Trigger Initial Sync
+## Step 6 — Trigger Initial Sync
 
 Use `mcp_argocd-mcp-st_sync_application` with:
 - `applicationName`: `app-api`
@@ -196,7 +173,7 @@ Wait for the sync to be dispatched. Do **not** wait in a polling loop — just t
 
 ---
 
-## Step 8 — Verify Application Status
+## Step 7 — Verify Application Status
 
 Use `mcp_argocd-mcp-st_get_application` with `applicationName: app-api` to retrieve the
 current health and sync status.
@@ -217,16 +194,15 @@ Present the result to the user in a concise table:
 
 ---
 
-## Step 9 — Summary
+## Step 8 — Summary
 
 Provide a short operational summary that includes:
 
-1. The Docker images built via `docker compose build` (service → image tag).
-2. The AppProject manifest path (`k8s/argocd/appproject.yaml`) and whether it was applied
+1. The AppProject manifest path (`k8s/argocd/appproject.yaml`) and whether it was applied
    successfully.
-3. The ArgoCD Application name, namespace, and sync policy.
-4. Any warnings (e.g. missing Kubernetes connectivity, missing secrets).
-5. Next recommended steps:
+2. The ArgoCD Application name, namespace, and sync policy.
+3. Any warnings (e.g. missing Kubernetes connectivity, missing secrets).
+4. Next recommended steps:
    - Replace the placeholder `Secret` values in `k8s/api/secret.yaml` with a proper
      secrets management solution (Sealed Secrets, External Secrets Operator, etc.).
    - Add an `Ingress` or `Gateway` resource if external access is required.
@@ -238,9 +214,9 @@ Provide a short operational summary that includes:
 
 | Situation | Action |
 |---|---|
-| `docker compose build` fails | Display full error, stop — do not proceed until images build successfully |
 | `k8s/api/` files are missing | Stop, list missing files, ask user to run `subagent-k8s-generator` |
+| Docker images not present | Stop — images must be built by the orchestrator's Phase 2 before this agent runs |
 | Git remote not reachable | Ask user to provide repo URL manually |
 | ArgoCD MCP tool returns error | Display the raw error, suggest checking ArgoCD server connectivity |
 | Application already exists | Confirm with user before updating |
-| kubectl not available | Skip Step 4 apply, manually instruct user to apply `k8s/argocd/appproject.yaml` |
+| kubectl not available | Skip Step 3 apply, manually instruct user to apply `k8s/argocd/appproject.yaml` |
