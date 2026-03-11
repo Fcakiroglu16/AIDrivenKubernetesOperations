@@ -2,11 +2,13 @@
 description: >
   [ORCHESTRATOR] End-to-end deployment orchestrator. When the user says "deploy X
   project", runs the full pipeline in order:
-    0. ArgoCD MCP connectivity check    — abort if unreachable
+    PRE. MCP Pre-flight Checks          — abort if ArgoCD MCP or Kubernetes MCP unreachable
+    0. kubectl context → docker-desktop — abort if not docker-desktop
     1. subagent-k8s-generator           — create k8s manifests (YAML only, no apply)
     2. docker compose build             — build Docker images
     3. subagent-argocd-deployer         — register ArgoCD AppProject + Application and sync
     4. k8s-log-analyzer                 — inspect pod logs, report errors, propose fixes
+  NOTE: All cluster and ArgoCD operations use ONLY MCP servers — never raw CLI.
 tools:
   - file_search
   - read_file
@@ -42,6 +44,10 @@ before asking the user how to proceed.
 ## Pipeline Overview
 
 ```
+Phase PRE ── MCP Pre-flight Checks             (ABORT if ArgoCD MCP or Kubernetes MCP unreachable)
+    │         PRE.1: mcp_argocd-mcp-st_ping
+    │         PRE.2: mcp_kubernetes_ping
+    ▼
 Phase 0.0 ── kubectl context → docker-desktop  (ABORT if not available — no other context allowed)
     │
     ▼
@@ -62,6 +68,70 @@ Phase 3 ──── subagent-argocd-deployer          (ArgoCD AppProject + Appl
     ▼
 Phase 4 ──── k8s-log-analyzer                  (inspect pod logs, report errors, propose fixes)
 ```
+
+---
+
+## Phase PRE — MCP Pre-flight Checks
+
+> **Bu faz TÜM diğer fazlardan önce çalışır. Her iki MCP sunucusu da başarılı yanıt vermelidir.**
+> **Bu pipeline'daki tüm ArgoCD ve Kubernetes işlemleri YALNIZCA kendi MCP sunucuları üzerinden yapılır — asla doğrudan CLI kullanılmaz.**
+> **Herhangi bir MCP erişilemez durumdaysa pipeline tamamen durur, hiçbir faz çalışmaz.**
+
+### PRE.1 — ArgoCD MCP Health Check
+
+Use `mcp_argocd-mcp-st_ping` to verify the ArgoCD MCP server is reachable and healthy.
+
+- **Success**: Print `✅ ArgoCD MCP: erişilebilir` and continue to PRE.2.
+- **Failure**: Print the message below and **STOP immediately**. Do not proceed to any further phase.
+
+```
+❌ ArgoCD MCP sunucusuna ulaşılamadı.
+Deployment süreci başlatılamadı — hiçbir faz çalıştırılmayacak.
+
+Olası nedenler:
+  - ArgoCD MCP sunucusu çalışmıyor veya yanlış yapılandırılmış
+  - VS Code settings.json içinde ArgoCD MCP tanımlı değil
+  - Ağ/firewall engeli
+
+Çözüm:
+  - VS Code ayarlarında ArgoCD MCP konfigürasyonunu kontrol edin.
+  - MCP sunucusunun çalıştığını doğrulayın.
+  - Ardından tekrar deneyin.
+```
+
+### PRE.2 — Kubernetes MCP Health Check
+
+Use `mcp_kubernetes_ping` to verify the Kubernetes MCP server is reachable and healthy.
+
+- **Success**: Print `✅ Kubernetes MCP: erişilebilir` and continue to PRE.3.
+- **Failure**: Print the message below and **STOP immediately**. Do not proceed to any further phase.
+
+```
+❌ Kubernetes MCP sunucusuna ulaşılamadı.
+Deployment süreci başlatılamadı — hiçbir faz çalıştırılmayacak.
+
+Olası nedenler:
+  - Kubernetes MCP sunucusu çalışmıyor veya yanlış yapılandırılmış
+  - VS Code settings.json içinde Kubernetes MCP tanımlı değil
+  - Docker Desktop Kubernetes etkin değil
+
+Çözüm:
+  - VS Code ayarlarında Kubernetes MCP konfigürasyonunu kontrol edin.
+  - Docker Desktop: Settings → Kubernetes → Enable Kubernetes ✓
+  - MCP sunucusunun aktif olduğunu doğrulayın.
+  - Ardından tekrar deneyin.
+```
+
+### PRE.3 — Pre-flight sonucu
+
+Her iki kontrol de başarılı olduğunda yazdır:
+
+```
+✅ MCP Pre-flight başarılı — ArgoCD MCP ve Kubernetes MCP erişilebilir durumda.
+   Pipeline başlatılıyor...
+```
+
+Ardından Phase 0.0'a geç.
 
 ---
 
@@ -408,14 +478,16 @@ For every pod in `app-system`:
 After all phases complete, report:
 
 
-| Phase                               | Status                                 | Notes                 |
-| ----------------------------------- | -------------------------------------- | --------------------- |
-| Phase 0.0 — Docker Desktop Context | ✅ switched / ❌ aborted               |                       |
-| Phase 0.1 — ArgoCD MCP Check       | ✅ reachable / ❌ aborted              |                       |
-| Phase 1 — K8s Manifests            | ✅ / ⚠️ skipped / ❌ failed          |                       |
-| Phase 2 — Docker Build             | ✅ / ❌ failed                         | Images built          |
-| Phase 3 — ArgoCD                   | ✅ / ❌ failed                         | App name, sync status |
-| Phase 4 — Log Analysis             | ✅ healthy / ⚠️ warnings / 🔴 errors | Error count           |
+| Phase                                    | Status                                 | Notes                 |
+| ---------------------------------------- | -------------------------------------- | --------------------- |
+| Phase PRE.1 — ArgoCD MCP Pre-flight      | ✅ reachable / ❌ aborted              |                       |
+| Phase PRE.2 — Kubernetes MCP Pre-flight  | ✅ reachable / ❌ aborted              |                       |
+| Phase 0.0 — Docker Desktop Context       | ✅ switched / ❌ aborted               |                       |
+| Phase 0.1 — ArgoCD MCP Check             | ✅ reachable / ❌ aborted              |                       |
+| Phase 1 — K8s Manifests                  | ✅ / ⚠️ skipped / ❌ failed          |                       |
+| Phase 2 — Docker Build                   | ✅ / ❌ failed                         | Images built          |
+| Phase 3 — ArgoCD                         | ✅ / ❌ failed                         | App name, sync status |
+| Phase 4 — Log Analysis                   | ✅ healthy / ⚠️ warnings / 🔴 errors | Error count           |
 
 **Next recommended steps:**
 
@@ -431,8 +503,10 @@ After all phases complete, report:
 
 | Situation                                               | Action                                                                 |
 | ------------------------------------------------------- | ---------------------------------------------------------------------- |
+| ArgoCD MCP unreachable (`mcp_argocd-mcp-st_ping` fails) | **ABORT immediately** at Phase PRE.1 — do not proceed to any phase    |
+| Kubernetes MCP unreachable (`mcp_kubernetes_ping` fails)| **ABORT immediately** at Phase PRE.2 — do not proceed to any phase    |
 | `docker-desktop` context not found or not active        | **ABORT immediately** at Phase 0.0 — do not proceed                   |
-| ArgoCD MCP unreachable                                  | **ABORT immediately** at Phase 0.1 — do not proceed                   |
+| ArgoCD MCP unreachable (Phase 0.1 re-check)             | **ABORT immediately** at Phase 0.1 — do not proceed                   |
 | `k8s/api/` files missing & creation fails               | Stop at Phase 1, report missing files                                  |
 | `kubectl apply` attempted in Phase 1                    | **FORBIDDEN** — only dry-run is allowed in Phase 1                    |
 | `docker compose build` fails                            | Stop at Phase 2, show full error                                       |
