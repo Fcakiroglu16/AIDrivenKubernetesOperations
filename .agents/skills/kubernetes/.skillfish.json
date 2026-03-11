@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "name": "kubernetes",
+  "owner": "cosmix",
+  "repo": "claude-code-setup",
+  "path": "skills/kubernetes",
+  "branch": "main",
+  "sha": "9a2b15b7cef98b4ec1624f4916f86ed278e8b5c8",
+  "source": "manual"
+}
