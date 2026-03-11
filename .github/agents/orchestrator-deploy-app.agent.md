@@ -55,12 +55,12 @@ Phase 0.1 ── ArgoCD MCP connectivity check     (ABORT if unreachable)
     │
     ▼
 Phase 1 ──── subagent-k8s-generator            (k8s manifests — YAML files only, no kubectl apply)
-    │
+    │         ⚡ May be SKIPPED if manifests already exist → jumps to Phase 1.4
     ▼
-Phase 1.4 ── health check endpoints            (add /healthz/live + /healthz/ready to app if missing)
-    │
+Phase 1.4 ── Health Check Guard                (ALWAYS runs — checks & injects /healthz/live + /healthz/ready)
+    │         ⚡ NEVER skipped. Runs even when Phase 1 was skipped.
     ▼
-Phase 2 ──── docker compose build              (Docker images)
+Phase 2 ──── docker compose build              (Docker images — runs AFTER health checks are confirmed)
     │
     ▼
 Phase 3 ──── subagent-argocd-deployer          (ArgoCD AppProject + Application + sync)
@@ -189,7 +189,8 @@ Lütfen ArgoCD MCP sunucusunu kontrol edip tekrar deneyin.
 
 > **Skip this phase if all six files already exist under `k8s/api/`.**
 > Use `list_dir` on `k8s/api/` to check. If every file is present, report
-> "Phase 1 skipped — manifests already exist" and move to Phase 2.
+> "Phase 1 skipped — manifests already exist" and move to **Phase 1.4**.
+> ⚠️ Phase 1.4 (Health Check Guard) is NEVER skipped — always execute it before Phase 2.
 
 > **IMPORTANT**: This phase only **creates YAML files**. Do NOT run `kubectl apply`.
 > The actual apply to the cluster is handled by ArgoCD in Phase 3.
@@ -240,59 +241,84 @@ kubectl apply --dry-run=client -f k8s/api/
 If `kubectl` is unavailable, skip this step and note it in the summary.
 If dry-run fails, fix the YAML errors before proceeding to Phase 2.
 
-### 1.4 — Add health check endpoints to the target project
+---
 
-> This step targets the **project folder being deployed** (e.g., `App3.API/` when deploying `app3`).
-> The Kubernetes deployment manifests use `/healthz/live` and `/healthz/ready` probes — the app must expose them.
+## Phase 1.4 — Health Check Guard *(ALWAYS runs — never skipped)*
 
-**For the project being deployed, do ALL of the following:**
+> **This phase runs after Phase 1 (or directly after Phase 0.1 if Phase 1 was skipped).**
+> It ensures the target application exposes the liveness and readiness endpoints that the
+> Kubernetes deployment probes require **before** any Docker image is built.
+>
+> ⚠️ **NEVER skip this phase.** Even if `k8s/api/` manifests already exist.
 
-1. Read `{ProjectFolder}/Program.cs`.
-2. Check for ALL four of the following:
+### 1.4.1 — Identify the target project folder
 
-   - `using Microsoft.AspNetCore.Diagnostics.HealthChecks;`
-   - `builder.Services.AddHealthChecks()`
-   - `app.MapHealthChecks("/healthz/live", ...)`
-   - `app.MapHealthChecks("/healthz/ready", ...)`
-3. If **any** are missing, apply the following edits to `{ProjectFolder}/Program.cs`:
+Determine the project folder from the deploy command (e.g., `deploy app3` → `App3.API/`).
+If unclear, read `docker-compose.yml` to map service names to build contexts.
 
-   **a)** At the very top of the file, add the `using` (if not present):
+### 1.4.2 — Read and inspect Program.cs
 
-   ```csharp
-   using Microsoft.AspNetCore.Diagnostics.HealthChecks;
-   ```
+1. Read `{ProjectFolder}/Program.cs` using `read_file`.
+2. Search for ALL four of the following (use `grep_search` or string inspection):
 
-   **b)** Before `builder.Build()`, add the service registration (if not present):
+   | # | Required element | Present? |
+   |---|------------------|---------|
+   | 1 | `using Microsoft.AspNetCore.Diagnostics.HealthChecks;` | ✅ / ❌ |
+   | 2 | `builder.Services.AddHealthChecks()` | ✅ / ❌ |
+   | 3 | `app.MapHealthChecks("/healthz/live"` | ✅ / ❌ |
+   | 4 | `app.MapHealthChecks("/healthz/ready"` | ✅ / ❌ |
 
-   ```csharp
-   builder.Services.AddHealthChecks();
-   ```
+3. Print the inspection table so the user can see the health check status.
 
-   **c)** After `var app = builder.Build();`, add both endpoint mappings (if not present):
+### 1.4.3 — Inject missing health check code
 
-   ```csharp
-   // Liveness probe: process is alive — no checks executed
-   app.MapHealthChecks("/healthz/live", new HealthCheckOptions
-   {
-       Predicate = _ => false
-   });
+If **all four** are already present:
+- Print `✅ Health checks already configured — no changes needed.`
+- Skip to Phase 2.
 
-   // Readiness probe: runs checks tagged "ready"
-   app.MapHealthChecks("/healthz/ready", new HealthCheckOptions
-   {
-       Predicate = check => check.Tags.Contains("ready")
-   });
-   ```
-4. After editing, verify the project compiles:
+If **any** are missing, apply the following edits to `{ProjectFolder}/Program.cs`:
 
-   ```bash
-   dotnet build {ProjectFolder}/{ProjectName}.csproj
-   ```
+**a)** At the very top of the file, add the `using` (if not present):
 
-   If the build fails, fix the error before proceeding to Phase 2.
+```csharp
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+```
+
+**b)** Before `builder.Build()`, add the service registration (if not present):
+
+```csharp
+builder.Services.AddHealthChecks();
+```
+
+**c)** After `var app = builder.Build();`, add both endpoint mappings (if not present):
+
+```csharp
+// Liveness probe: process is alive — no dependency checks executed
+app.MapHealthChecks("/healthz/live", new HealthCheckOptions
+{
+    Predicate = _ => false
+});
+
+// Readiness probe: runs checks tagged "ready"
+app.MapHealthChecks("/healthz/ready", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready")
+});
+```
 
 > **Note**: `Microsoft.AspNetCore.Diagnostics.HealthChecks` is part of the `Microsoft.AspNetCore.App`
 > shared framework — **no additional NuGet package is needed**.
+
+### 1.4.4 — Verify compilation
+
+After editing, run:
+
+```bash
+dotnet build {ProjectFolder}/{ProjectName}.csproj
+```
+
+- **Success**: Print `✅ Health check endpoints verified — project compiles successfully.` and proceed to Phase 2.
+- **Failure**: Fix the compilation error before proceeding. Do **not** build the Docker image with broken code.
 
 ---
 
@@ -485,6 +511,7 @@ After all phases complete, report:
 | Phase 0.0 — Docker Desktop Context       | ✅ switched / ❌ aborted               |                       |
 | Phase 0.1 — ArgoCD MCP Check             | ✅ reachable / ❌ aborted              |                       |
 | Phase 1 — K8s Manifests                  | ✅ / ⚠️ skipped / ❌ failed          |                       |
+| Phase 1.4 — Health Check Guard           | ✅ present / ✏️ injected / ❌ failed  | Program.cs patched    |
 | Phase 2 — Docker Build                   | ✅ / ❌ failed                         | Images built          |
 | Phase 3 — ArgoCD                         | ✅ / ❌ failed                         | App name, sync status |
 | Phase 4 — Log Analysis                   | ✅ healthy / ⚠️ warnings / 🔴 errors | Error count           |
@@ -509,6 +536,8 @@ After all phases complete, report:
 | ArgoCD MCP unreachable (Phase 0.1 re-check)             | **ABORT immediately** at Phase 0.1 — do not proceed                   |
 | `k8s/api/` files missing & creation fails               | Stop at Phase 1, report missing files                                  |
 | `kubectl apply` attempted in Phase 1                    | **FORBIDDEN** — only dry-run is allowed in Phase 1                    |
+| Health check code missing in Program.cs (Phase 1.4)     | Inject the code automatically, then run `dotnet build` to verify       |
+| `dotnet build` fails after health check injection       | Fix the error — do NOT proceed to Phase 2 with broken code             |
 | `docker compose build` fails                            | Stop at Phase 2, show full error                                       |
 | Image name mismatch between compose and deployment.yaml | Fix deployment.yaml, then rebuild                                      |
 | ArgoCD MCP returns error in Phase 3                     | Show raw error, suggest checking ArgoCD server                         |

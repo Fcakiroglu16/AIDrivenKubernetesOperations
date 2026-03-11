@@ -25,3 +25,10 @@ services:
       context: .
       dockerfile: App4.API/Dockerfile
 
+
+  app5.api:
+    image: app5-api
+    build:
+      context: .
+      dockerfile: App5.API/Dockerfile
+
