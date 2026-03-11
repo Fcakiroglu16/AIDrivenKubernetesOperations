@@ -42,7 +42,7 @@ spec:
         - name: app5-api
           # Built locally via: docker compose build app5.api
           image: app5-api:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - name: http
               containerPort: 8080
