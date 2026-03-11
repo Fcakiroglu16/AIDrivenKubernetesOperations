@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="App.API/App.API.csproj" />
+  <Project Path="App2.API/App2.API.csproj" Id="a528e32e-3cd6-4260-bcbe-99f8f29209cd" />
   <Project Path="docker-compose.dcproj">
     <Build />
   </Project>

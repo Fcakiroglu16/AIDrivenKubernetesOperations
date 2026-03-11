@@ -4,3 +4,10 @@ services:
     build:
       context: .
       dockerfile: App.API/Dockerfile
+
+  app2.api:
+    image: app2-api:latest
+    build:
+      context: .
+      dockerfile: App2.API/Dockerfile
+
