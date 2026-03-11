@@ -6,7 +6,8 @@
       "serviceActions": {
         "app.api": "StartDebugging",
         "app2.api": "StartDebugging",
-        "app3.api": "StartDebugging"
+        "app3.api": "StartDebugging",
+        "app4.api": "StartDebugging"
       }
     }
   }
