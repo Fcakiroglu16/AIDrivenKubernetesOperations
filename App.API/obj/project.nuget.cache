@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "dgSpecHash": "4uFukEhZNgs=",
+  "success": true,
+  "projectFilePath": "c:\\Users\\f-cak\\source\\repos\\AIDrivenKubernetesOperations\\App.API\\App.API.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\f-cak\\.nuget\\packages\\microsoft.aspnetcore.openapi\\10.0.4\\microsoft.aspnetcore.openapi.10.0.4.nupkg.sha512",
+    "C:\\Users\\f-cak\\.nuget\\packages\\microsoft.openapi\\2.0.0\\microsoft.openapi.2.0.0.nupkg.sha512",
+    "C:\\Users\\f-cak\\.nuget\\packages\\microsoft.visualstudio.azure.containers.tools.targets\\1.23.0\\microsoft.visualstudio.azure.containers.tools.targets.1.23.0.nupkg.sha512",
+    "C:\\Users\\f-cak\\.nuget\\packages\\scalar.aspnetcore\\2.13.6\\scalar.aspnetcore.2.13.6.nupkg.sha512"
+  ],
+  "logs": []
+}
