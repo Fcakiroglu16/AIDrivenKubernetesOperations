@@ -11,6 +11,8 @@ tools:
   - list_dir
   - run_in_terminal
   - grep_search
+skills:
+  - ../.agents/skills/kubernetes/SKILL.md
 ---
 # Kubernetes Resource Generator — Agent Instructions
 
